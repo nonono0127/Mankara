@@ -1,0 +1,470 @@
+<title>まわるマンカラ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  /* レイアウト: 左に盤（主役）、右に手番・得点・設定・ルールの縦パネル。狭い画面では縦積み */
+  :root {
+    --bg: #eef0e6;          /* 草色がかった紙 */
+    --panel: #f8f9f3;
+    --ink: #22261d;
+    --muted: #61685a;
+    --line: #d3d7c8;
+    --wood: #8a5a34;        /* 彫った木の盤 */
+    --wood-deep: #5e3a1f;
+    --pit: #4a2d17;
+    --accent: #1f7a6b;      /* 打てる穴の印・ボタン */
+    --accent-ink: #ffffff;
+    --p1: #2f6fd1; --p2: #d2492a; --p3: #2c9a4a; --p4: #b07a00;
+    --stone1: #5fb4e8; --stone2: #f2b544; --stone3: #7ccf8a; --stone4: #ee6f63; --stone5: #e9e4f2;
+    --font-display: "Dela Gothic One", "Hiragino Sans", "Yu Gothic", sans-serif;
+    --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151912; --panel: #1d2219; --ink: #e9ecdf; --muted: #a2a995; --line: #333a2c;
+      --wood: #6b4425; --wood-deep: #452a14; --pit: #2b190b;
+      --accent: #4cc2ac; --accent-ink: #0d1f1b;
+      --p1: #6fa3ff; --p2: #ff7d5e; --p3: #5fd07d; --p4: #e7b23a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151912; --panel: #1d2219; --ink: #e9ecdf; --muted: #a2a995; --line: #333a2c;
+    --wood: #6b4425; --wood-deep: #452a14; --pit: #2b190b;
+    --accent: #4cc2ac; --accent-ink: #0d1f1b;
+    --p1: #6fa3ff; --p2: #ff7d5e; --p3: #5fd07d; --p4: #e7b23a;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--font-body); font-size: 15px; line-height: 1.7;
+    padding: 24px 16px 40px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+  h1 { font-family: var(--font-display); font-weight: 400; font-size: 2rem; margin: 0; letter-spacing: 0.02em; }
+  header p { margin: 0; color: var(--muted); }
+
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+  .stage { min-width: 0; }
+  .stage svg { display: block; width: 100%; height: auto; max-height: 78vh; }
+
+  .side { display: grid; gap: 14px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .status { font-weight: 700; font-size: 1.05rem; min-height: 3.4em; display: flex; align-items: center; gap: 10px; }
+  .status .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .scores { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .scores li { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 6px; }
+  .scores li.turn { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .scores .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .scores b { font-variant-numeric: tabular-nums; font-size: 1.15rem; }
+  .scores small { color: var(--muted); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button:focus-visible, select:focus-visible, input:focus-visible, .pit:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  details > summary { cursor: pointer; font-weight: 700; }
+  .field { display: grid; gap: 4px; margin-top: 12px; }
+  .field label, .field .lbl { font-size: 0.85rem; color: var(--muted); letter-spacing: 0.04em; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; padding: 6px 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .range { display: grid; grid-template-columns: 1fr 2.5em; align-items: center; gap: 10px; }
+  .range output { font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .seats { display: grid; gap: 6px; }
+  .seat { display: grid; grid-template-columns: 14px 2.5em 1fr; align-items: center; gap: 8px; }
+  .seat .dot { width: 12px; height: 12px; border-radius: 50%; }
+  select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+  .rules ol { margin: 8px 0 0; padding-left: 1.3em; display: grid; gap: 4px; }
+  .rules li::marker { color: var(--muted); }
+
+  /* 盤面 */
+  .board-shape { fill: var(--wood); stroke: var(--wood-deep); stroke-width: 3; }
+  .ring-shape { fill: none; stroke: var(--wood); }
+  .ring-edge { fill: none; stroke: var(--wood-deep); stroke-width: 3; }
+  .hole { fill: var(--pit); }
+  .pit { cursor: default; outline: none; }
+  .pit.legal { cursor: pointer; }
+  .pit.legal .rim { stroke: var(--accent); stroke-width: 4; stroke-dasharray: 6 5; }
+  .pit.legal:hover .rim { stroke-dasharray: none; }
+  .rim { fill: none; stroke-width: 3; }
+  .flash { fill: none; stroke: var(--ink); stroke-width: 3; opacity: 0.55; }
+  .count { font-family: var(--font-body); font-weight: 700; font-size: 15px; fill: var(--ink); text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
+  .count-bg { fill: var(--panel); stroke: var(--line); }
+  .plabel { font-family: var(--font-display); font-size: 18px; text-anchor: middle; dominant-baseline: central; }
+  .center-text { font-family: var(--font-display); font-size: 22px; text-anchor: middle; dominant-baseline: central; fill: var(--ink); }
+  .center-sub { font-size: 14px; text-anchor: middle; fill: var(--muted); }
+  .stone { stroke: rgba(0,0,0,0.25); stroke-width: 0.6; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>まわるマンカラ</h1>
+    <p>穴の数・石の数・人数を変えると、盤の形も変わります</p>
+  </header>
+
+  <div class="main">
+    <div class="stage" id="stage" aria-label="盤面"></div>
+
+    <aside class="side">
+      <div class="card">
+        <div class="status" id="status" aria-live="polite"></div>
+        <ul class="scores" id="scores"></ul>
+        <div class="actions" style="margin-top:12px">
+          <button class="primary" id="restart">最初からやり直す</button>
+        </div>
+      </div>
+
+      <details class="card" id="settings" open>
+        <summary>盤と対戦相手の設定</summary>
+        <div class="field">
+          <span class="lbl">人数</span>
+          <div class="seg" id="players-seg">
+            <button type="button" data-n="2">2人</button>
+            <button type="button" data-n="3">3人</button>
+            <button type="button" data-n="4">4人</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="pits">1人あたりの穴の数</label>
+          <div class="range"><input type="range" id="pits" min="3" max="8" value="6"><output id="pits-out">6</output></div>
+        </div>
+        <div class="field">
+          <label for="stones">穴1つに最初に入れる石</label>
+          <div class="range"><input type="range" id="stones" min="2" max="6" value="4"><output id="stones-out">4</output></div>
+        </div>
+        <div class="field">
+          <span class="lbl">だれが打つか</span>
+          <div class="seats" id="seats"></div>
+        </div>
+        <div class="field">
+          <label for="speed">石を配る速さ</label>
+          <select id="speed">
+            <option value="320">ゆっくり</option>
+            <option value="170" selected>ふつう</option>
+            <option value="70">はやい</option>
+          </select>
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button class="primary" id="apply">この設定で始める</button>
+        </div>
+      </details>
+
+      <details class="card rules">
+        <summary>ルール</summary>
+        <ol>
+          <li>自分の穴を1つ選ぶと、中の石を全部つかんで、反時計回りに1個ずつ配ります。</li>
+          <li>自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
+          <li>最後の1個が自分のゴールに入ったら、もう1回打てます。</li>
+          <li>最後の1個が自分の空っぽの穴に入ったら、次の番の人の向かいの穴の石を横取りして、その1個と一緒にゴールへ入れます。</li>
+          <li>だれか1人の穴が全部空になったら終わりです。残った石はそれぞれの持ち主のゴールに入り、ゴールの石がいちばん多い人の勝ちです。</li>
+        </ol>
+      </details>
+    </aside>
+  </div>
+</div>
+
+<script src="src/engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const M = window.Mancala;
+  const SVG = 'http://www.w3.org/2000/svg';
+  const PCOL = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)'];
+  const SEAT_OPTS = [['human', '人'], ['easy', 'CPU よわい'], ['normal', 'CPU ふつう'], ['hard', 'CPU つよい']];
+
+  const els = {
+    stage: document.getElementById('stage'), status: document.getElementById('status'), scores: document.getElementById('scores'),
+    restart: document.getElementById('restart'), apply: document.getElementById('apply'), seg: document.getElementById('players-seg'),
+    pits: document.getElementById('pits'), pitsOut: document.getElementById('pits-out'),
+    stones: document.getElementById('stones'), stonesOut: document.getElementById('stones-out'),
+    seats: document.getElementById('seats'), speed: document.getElementById('speed'),
+  };
+
+  // 設定フォームの値（「始める」までは盤に反映しない）
+  let draft = { players: 2, pits: 6, stones: 4, seats: ['human', 'normal', 'normal', 'normal'] };
+  // 今の対局
+  let S = null;        // { cfg, game, view, flash, message, busy }
+  let gen = 0;         // やり直し時に古いタイマーを無効にする番号
+
+  function name(p) {
+    const seat = S.cfg.seats[p];
+    return 'P' + (p + 1) + (seat === 'human' ? '' : '（CPU）');
+  }
+
+  // ---------- 盤の形 ----------
+  function layout(players, pits) {
+    const slots = [];
+    if (players === 2) {
+      // 2人: 長方形の盤。下の列がP1（左→右）、右端がP1のゴール。上の列がP2（右→左）。
+      const S_ = 76, rowY = 46, storeX = (pits / 2) * S_ + 42;
+      for (let p = 0; p < 2; p++) {
+        const sign = p === 0 ? 1 : -1;
+        for (let i = 0; i < pits; i++) {
+          const x = sign * (i - (pits - 1) / 2) * S_, y = sign * rowY;
+          slots.push({ x, y, r: 29, store: false, ux: 0, uy: sign });
+        }
+        slots.push({ x: sign * storeX, y: 0, rx: 32, ry: 82, rot: 0, store: true, ux: 0, uy: 1 });
+      }
+      const w = storeX + 54;
+      return { kind: 'rect', slots, w, h: 118, labels: [{ x: 0, y: 148 }, { x: 0, y: -148 }], view: [-w - 10, -175, 2 * w + 20, 350] };
+    }
+    // 3〜4人: 丸い盤。輪の上に各自の穴とゴールが並ぶ。
+    const segLen = pits + 1.8, W = players * segLen, unit = 74;
+    const R = Math.max(W * unit / (2 * Math.PI), 170);
+    const c0 = (pits - 1) / 2;
+    const ang = (c) => Math.PI / 2 - 2 * Math.PI * (c - c0) / W;
+    for (let p = 0; p < players; p++) {
+      for (let i = 0; i <= pits; i++) {
+        const store = i === pits;
+        const a = ang(p * segLen + (store ? pits + 0.4 : i));
+        const ux = Math.cos(a), uy = Math.sin(a);
+        const s = { x: R * ux, y: R * uy, ux, uy, store };
+        if (store) { s.rx = 28; s.ry = 46; s.rot = a * 180 / Math.PI; } else s.r = 29;
+        slots.push(s);
+      }
+    }
+    const labels = [];
+    for (let p = 0; p < players; p++) {
+      const a = ang(p * segLen + c0);
+      labels.push({ x: (R + 92) * Math.cos(a), y: (R + 92) * Math.sin(a) });
+    }
+    const m = R + 125, mx = R + 175; // 左右は名前がはみ出ないよう広めに
+    return { kind: 'ring', slots, R, labels, view: [-mx, -m, 2 * mx, 2 * m] };
+  }
+
+  // 石の位置（ひまわりの種の並び方で、毎回同じ場所に置く）
+  function stoneSpots(n, slot) {
+    const out = [], max = slot.store ? 28 : 13;
+    const k = Math.min(n, max);
+    const spread = slot.store ? 4.6 : 6.1;
+    for (let j = 0; j < k; j++) {
+      const d = spread * Math.sqrt(j + 0.3), t = j * 2.39996;
+      let x = d * Math.cos(t), y = d * Math.sin(t);
+      if (slot.store) y *= slot.ry / slot.rx;
+      out.push([x, y, j]);
+    }
+    return out;
+  }
+
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(SVG, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // ---------- 描画 ----------
+  function render() {
+    const { cfg, game, view } = S;
+    const L = layout(cfg.players, cfg.pits);
+    const legal = (!S.busy && !game.over && cfg.seats[game.current] === 'human') ? new Set(M.legalMoves(game)) : new Set();
+    const svg = el('svg', { viewBox: L.view.join(' '), role: 'group', 'aria-label': 'マンカラの盤' });
+
+    const defs = el('defs', {}, svg);
+    for (let c = 1; c <= 5; c++) {
+      const g = el('radialGradient', { id: 'st' + c, cx: '35%', cy: '30%', r: '75%' }, defs);
+      el('stop', { offset: '0%', 'stop-color': '#ffffff', 'stop-opacity': '0.9' }, g);
+      el('stop', { offset: '35%', style: 'stop-color: var(--stone' + c + ')' }, g);
+      el('stop', { offset: '100%', style: 'stop-color: var(--stone' + c + ')', 'stop-opacity': '0.75' }, g);
+    }
+
+    if (L.kind === 'rect') {
+      el('rect', { class: 'board-shape', x: -L.w, y: -L.h, width: 2 * L.w, height: 2 * L.h, rx: 60 }, svg);
+    } else {
+      el('circle', { class: 'ring-shape', r: L.R, 'stroke-width': 128 }, svg);
+      el('circle', { class: 'ring-edge', r: L.R + 64 }, svg);
+      el('circle', { class: 'ring-edge', r: L.R - 64 }, svg);
+    }
+
+    L.slots.forEach((s, idx) => {
+      const owner = M.ownerOf(game, idx);
+      const pitNo = idx % (cfg.pits + 1);
+      const isLegal = owner === game.current && !s.store && legal.has(pitNo);
+      const g = el('g', { class: 'pit' + (isLegal ? ' legal' : ''), transform: `translate(${s.x.toFixed(1)} ${s.y.toFixed(1)})` }, svg);
+      if (isLegal) {
+        g.setAttribute('tabindex', '0');
+        g.setAttribute('role', 'button');
+        g.setAttribute('aria-label', `穴${pitNo + 1}（石${view[idx]}個）を選ぶ`);
+        g.addEventListener('click', () => humanMove(pitNo));
+        g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); humanMove(pitNo); } });
+      }
+      const inner = el('g', s.store ? { transform: `rotate(${s.rot || 0})` } : {}, g);
+      if (s.store) {
+        // ゴールは縦長の楕円。丸い盤では輪に沿う向きに回す
+        el('ellipse', { class: 'hole', rx: s.rx, ry: s.ry }, inner);
+        el('ellipse', { class: 'rim', rx: s.rx + 3, ry: s.ry + 3, stroke: PCOL[owner] }, inner);
+      } else {
+        el('circle', { class: 'hole', r: s.r }, inner);
+        el('circle', { class: 'rim', r: s.r + 3, stroke: PCOL[owner] }, inner);
+      }
+      if (S.flash === idx) {
+        if (s.store) el('ellipse', { class: 'flash', rx: s.rx + 9, ry: s.ry + 9 }, inner);
+        else el('circle', { class: 'flash', r: s.r + 9 }, inner);
+      }
+      for (const [x, y, j] of stoneSpots(view[idx], s)) {
+        const c = ((idx * 7 + j * 3) % 5) + 1;
+        el('circle', { class: 'stone', cx: x.toFixed(1), cy: y.toFixed(1), r: s.store ? 6 : 6.5, fill: `url(#st${c})` }, inner);
+      }
+      // 石の数の札（盤の外側寄り）
+      // 長方形の盤のゴールは真ん中に、それ以外は穴の外側に置く
+      const centered = L.kind === 'rect' && s.store;
+      const dist = L.kind === 'rect' ? 48 : 52;
+      const bx = centered ? 0 : s.ux * dist, by = centered ? 0 : s.uy * dist;
+      const bg = el('g', { transform: `translate(${bx.toFixed(1)} ${by.toFixed(1)})` }, g);
+      const bw = centered ? 36 : 28, bh = centered ? 26 : 22;
+      el('rect', { class: 'count-bg', x: -bw / 2, y: -bh / 2, width: bw, height: bh, rx: bh / 2 }, bg);
+      el('text', { class: 'count', style: centered ? 'font-size:18px' : '' }, bg).textContent = view[idx];
+    });
+
+    L.labels.forEach((p, i) => {
+      const t = el('text', { class: 'plabel', x: p.x.toFixed(1), y: p.y.toFixed(1), fill: PCOL[i] }, svg);
+      t.textContent = name(i) + (game.current === i && !game.over ? ' の番' : '');
+    });
+
+    if (L.kind === 'ring') {
+      const fs = Math.round(L.R * 0.13);
+      el('text', { class: 'center-text', y: -fs * 0.4, style: `font-size:${fs}px` }, svg).textContent = game.over ? '終了' : `P${game.current + 1} の番`;
+      el('text', { class: 'center-sub', y: fs * 0.9, style: `font-size:${Math.round(fs * 0.55)}px` }, svg).textContent = `${cfg.players}人 · 穴${cfg.pits} · 石${cfg.stones}`;
+    }
+
+    els.stage.replaceChildren(svg);
+    renderSide();
+  }
+
+  function renderSide() {
+    const { cfg, game, view } = S;
+    const dot = (p) => `<span class="dot" style="background:${PCOL[p]}"></span>`;
+    els.status.innerHTML = (game.over ? '' : dot(game.current)) + `<span>${S.message}</span>`;
+    let rows = '';
+    for (let p = 0; p < cfg.players; p++) {
+      const turn = !game.over && game.current === p;
+      rows += `<li class="${turn ? 'turn' : ''}">${dot(p)}<span>${name(p)}${turn ? ' <small>手番</small>' : ''}</span><b>${view[M.storeIndex(game, p)]}</b></li>`;
+    }
+    els.scores.innerHTML = rows;
+  }
+
+  // ---------- 進行 ----------
+  function newGame(cfg) {
+    gen++;
+    const game = M.createGame(cfg);
+    S = { cfg, game, view: game.board.slice(), flash: -1, message: '', busy: false };
+    setTurnMessage();
+    render();
+    nextTurn();
+  }
+
+  function setTurnMessage(prefix) {
+    const { game, cfg } = S;
+    if (game.over) {
+      const w = M.winners(game), sc = M.scores(game);
+      const scoreText = sc.join(' 対 ');
+      S.message = w.length > 1 ? `引き分け（${scoreText}）` : `${name(w[0])} の勝ち！（${scoreText}）`;
+      return;
+    }
+    const who = cfg.seats[game.current] === 'human' ? `${name(game.current)}：光っている穴を選んでください` : `${name(game.current)} が考えています…`;
+    S.message = (prefix ? prefix + ' ' : '') + who;
+  }
+
+  function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  async function play(pit) {
+    const myGen = gen;
+    const before = S.game;
+    const r = M.applyMove(before, pit);
+    const delay = Number(S.cfg.speed);
+    S.busy = true;
+    render();
+    for (const st of r.steps) {
+      if (myGen !== gen) return;
+      if (st.type === 'pickup') { S.view[st.idx] = 0; S.flash = st.idx; }
+      else if (st.type === 'drop') { S.view[st.idx]++; S.flash = st.idx; }
+      else if (st.type === 'capture') {
+        await wait(delay * 2);
+        if (myGen !== gen) return;
+        st.from.forEach((i) => { S.view[i] = 0; });
+        S.view[st.to] += st.count; S.flash = st.to;
+      } else if (st.type === 'end') {
+        await wait(delay * 2);
+        if (myGen !== gen) return;
+        S.view = r.game.board.slice(); S.flash = -1;
+      }
+      render();
+      await wait(st.type === 'capture' ? delay * 3 : delay);
+    }
+    if (myGen !== gen) return;
+    S.game = r.game; S.view = r.game.board.slice(); S.flash = -1; S.busy = false;
+    const cap = r.steps.find((s) => s.type === 'capture');
+    let prefix = '';
+    if (cap) prefix = `${name(before.current)} が ${cap.count}個 横取り！`;
+    else if (r.extraTurn && !r.game.over) prefix = 'ゴールで止まったので、もう1回！';
+    setTurnMessage(prefix);
+    render();
+    nextTurn();
+  }
+
+  function nextTurn() {
+    const { game, cfg } = S;
+    if (game.over || cfg.seats[game.current] === 'human') return;
+    const myGen = gen;
+    setTimeout(() => {
+      if (myGen !== gen) return;
+      play(M.chooseMove(S.game, cfg.seats[S.game.current]));
+    }, 550);
+  }
+
+  function humanMove(pit) {
+    if (S.busy || S.game.over || S.cfg.seats[S.game.current] !== 'human') return;
+    play(pit);
+  }
+
+  // ---------- 設定フォーム ----------
+  function renderDraft() {
+    els.seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === draft.players)));
+    els.pits.value = draft.pits; els.pitsOut.textContent = draft.pits;
+    els.stones.value = draft.stones; els.stonesOut.textContent = draft.stones;
+    let html = '';
+    for (let p = 0; p < draft.players; p++) {
+      html += `<div class="seat"><span class="dot" style="background:${PCOL[p]}"></span><label for="seat-${p}">P${p + 1}</label><select id="seat-${p}" data-p="${p}">` +
+        SEAT_OPTS.map(([v, t]) => `<option value="${v}"${draft.seats[p] === v ? ' selected' : ''}>${t}</option>`).join('') + '</select></div>';
+    }
+    els.seats.innerHTML = html;
+  }
+
+  els.seg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; draft.players = Number(b.dataset.n); renderDraft(); });
+  els.pits.addEventListener('input', () => { draft.pits = Number(els.pits.value); els.pitsOut.textContent = draft.pits; });
+  els.stones.addEventListener('input', () => { draft.stones = Number(els.stones.value); els.stonesOut.textContent = draft.stones; });
+  els.seats.addEventListener('change', (e) => { const p = Number(e.target.dataset.p); draft.seats[p] = e.target.value; });
+  els.speed.addEventListener('change', () => { if (S) S.cfg.speed = els.speed.value; });
+
+  function cfgFromDraft() {
+    return { players: draft.players, pits: draft.pits, stones: draft.stones, seats: draft.seats.slice(0, draft.players), speed: els.speed.value };
+  }
+  els.apply.addEventListener('click', () => newGame(cfgFromDraft()));
+  els.restart.addEventListener('click', () => newGame(Object.assign({}, S.cfg, { speed: els.speed.value })));
+
+  // ページ更新時に対局を引き継ぐ
+  window.claude?.hot?.snapshot?.(() => ({ draft, cfg: S.cfg, game: S.busy ? null : S.game }));
+  function start(data) {
+    if (data && data.draft) draft = data.draft;
+    renderDraft();
+    if (data && data.cfg && data.game) {
+      gen++;
+      S = { cfg: data.cfg, game: data.game, view: data.game.board.slice(), flash: -1, message: '', busy: false };
+      setTurnMessage(); render(); nextTurn();
+    } else {
+      newGame(cfgFromDraft());
+    }
+  }
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
