@@ -97,3 +97,11 @@ test('emptyルールでも最後まで遊べる', () => {
     assert.strictEqual(M.winners(g).length, 1);
   }
 });
+
+test('ローカルルール: 相手のゴールにも入れる', () => {
+  const g = M.createGame({ players: 2, pits: 3, stones: 1, rule: 'empty', allStores: true });
+  g.board = [0,0,6, 0, 1,1,1, 0];
+  // 穴2の6個 → 自ゴール, 相手穴0,1,2, 相手ゴール(入る), 自分の穴0
+  const r = M.applyMove(g, 2);
+  assert.deepStrictEqual(r.game.board, [1,0,0, 1, 2,2,2, 1]);
+});

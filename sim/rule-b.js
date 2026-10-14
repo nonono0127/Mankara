@@ -1,5 +1,6 @@
 // ルールB（先に自分の穴を空にした人の勝ち）の勝ち方を深掘りする。
-//   node sim/rule-b.js [穴の数] [石の数] [1組あたりの対戦数]
+//   node sim/rule-b.js [穴の数] [石の数] [1組あたりの対戦数] [all]
+//   4つ目に all を付けると、ローカルルール「相手のゴールにも入れる」で調べる
 // 1) 作戦の総当たり  2) 強い作戦の手とどれだけ一致するか  3) 最初の1手  4) 先手・後手
 'use strict';
 const M = require('../src/engine.js');
@@ -10,6 +11,7 @@ const GAMES = Number(process.argv[4] || 4000);
 const HEAVY_GAMES = Math.max(100, Math.floor(GAMES / 12));
 const SLIP = 0.1;
 const RULE = 'empty';
+const ALL_STORES = process.argv[5] === 'all';
 
 function mulberry32(a) {
   return function () {
@@ -21,7 +23,7 @@ function mulberry32(a) {
 }
 let rng = mulberry32(42);
 const pick = (arr) => arr[Math.floor(rng() * arr.length)];
-const newGame = () => M.createGame({ players: 2, pits: PITS, stones: STONES, rule: RULE });
+const newGame = () => M.createGame({ players: 2, pits: PITS, stones: STONES, rule: RULE, allStores: ALL_STORES });
 
 // ---- 手の性質 ----
 const own = (g, i) => g.board[M.pitIndex(g, g.current, i)];
@@ -89,11 +91,11 @@ const STRATEGIES = {
   '序盤は相手に多く送る→終盤は左端から': (g, ms) => (isEarly(g) ? bestSet(ms, (i) => sent(g, i)) : [Math.min(...ms)]),
   '序盤は一番多い穴→終盤は左端から': (g, ms) => (isEarly(g) ? bestSet(ms, (i) => own(g, i)) : [Math.min(...ms)]),
   '序盤は右端から→終盤は左端から': (g, ms) => (isEarly(g) ? [Math.max(...ms)] : [Math.min(...ms)]),
-  'ゲームのCPU「ふつう」(3手先読み)': (g, ms) => [M.chooseMove(g, 'normal')],
+  'ゲームのCPU「ふつう」': (g, ms) => [M.chooseMove(g, 'normal', rng)],
   'モンテカルロ思考（でたらめで40回）': monteCarlo(40, 'random'),
   'モンテカルロ思考（左端からで40回）': monteCarlo(40, 'left'),
 };
-const HEAVY = new Set(Object.keys(STRATEGIES).filter((n) => n.startsWith('モンテカルロ')));
+const HEAVY = new Set(Object.keys(STRATEGIES).filter((n) => n.startsWith('モンテカルロ') || n.startsWith('ゲームのCPU')));
 
 function choose(name, g) {
   const ms = M.legalMoves(g);
@@ -114,7 +116,7 @@ const log = (...a) => console.log(...a);
 const out = { pits: PITS, stones: STONES, games: GAMES };
 
 // ---- 1) 総当たり ----
-log(`=== ルールB（先に空にした人の勝ち）／ 穴${PITS}・石${STONES} ===`);
+log(`=== ルールB（先に空にした人の勝ち）${ALL_STORES ? '＋相手のゴールにも入れる' : ''}／ 穴${PITS}・石${STONES} ===`);
 const names = Object.keys(STRATEGIES);
 const tot = {}; names.forEach((n) => (tot[n] = { pts: 0, games: 0 }));
 const vs = {}; names.forEach((n) => (vs[n] = {}));
@@ -210,4 +212,4 @@ log(`\n[4] 強い作戦どうし（${follow}）で先手が勝つ割合: ${pct(f
 log(`  (${((Date.now() - t0) / 1000).toFixed(0)}秒)`);
 out.firstPlayer = fw / OPEN_N;
 
-require('fs').writeFileSync(require('path').join(__dirname, `rule-b-${PITS}x${STONES}.json`), JSON.stringify(out, null, 2));
+require('fs').writeFileSync(require('path').join(__dirname, `rule-b-${PITS}x${STONES}${ALL_STORES ? '-all' : ''}.json`), JSON.stringify(out, null, 2));

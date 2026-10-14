@@ -84,6 +84,8 @@
   .seat { display: grid; grid-template-columns: 14px 2.5em 1fr; align-items: center; gap: 8px; }
   .seat .dot { width: 12px; height: 12px; border-radius: 50%; }
   select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--ink) !important; font-size: 0.9rem !important; letter-spacing: 0 !important; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 18px; height: 18px; }
   .rules ol { margin: 8px 0 0; padding-left: 1.3em; display: grid; gap: 4px; }
   .rules li::marker { color: var(--muted); }
 
@@ -171,6 +173,7 @@
             <option value="empty" selected>先に自分の穴を空にした人の勝ち</option>
             <option value="store">ゴールの石がいちばん多い人の勝ち</option>
           </select>
+          <label class="check" for="all-stores"><input type="checkbox" id="all-stores"> 相手のゴールにも石を入れる（ローカルルール）</label>
         </div>
         <div class="field">
           <span class="lbl">人数</span>
@@ -209,13 +212,13 @@
         <summary>ルール</summary>
         <ol data-rule="empty">
           <li>自分の穴を1つ選ぶと、中の石を全部つかんで、反時計回りに1個ずつ配ります。</li>
-          <li>自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
+          <li class="store-rule">自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
           <li>最後の1個が自分のゴールに入ったら、もう1回打てます。</li>
           <li>自分の穴を先に全部空にした人の勝ちです。</li>
         </ol>
         <ol data-rule="store" hidden>
           <li>自分の穴を1つ選ぶと、中の石を全部つかんで、反時計回りに1個ずつ配ります。</li>
-          <li>自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
+          <li class="store-rule">自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
           <li>最後の1個が自分のゴールに入ったら、もう1回打てます。</li>
           <li>最後の1個が自分の空っぽの穴に入ったら、次の番の人の向かいの穴の石を横取りして、その1個と一緒にゴールへ入れます。</li>
           <li>だれか1人の穴が全部空になったら終わりです。残った石はそれぞれの持ち主のゴールに入り、ゴールの石がいちばん多い人の勝ちです。</li>
@@ -239,13 +242,13 @@
     restart: document.getElementById('restart'), apply: document.getElementById('apply'), seg: document.getElementById('players-seg'),
     pits: document.getElementById('pits'), pitsOut: document.getElementById('pits-out'),
     stones: document.getElementById('stones'), stonesOut: document.getElementById('stones-out'),
-    seats: document.getElementById('seats'), speed: document.getElementById('speed'), rule: document.getElementById('rule'),
+    seats: document.getElementById('seats'), speed: document.getElementById('speed'), rule: document.getElementById('rule'), allStores: document.getElementById('all-stores'),
     result: document.getElementById('result'), resultTitle: document.getElementById('result-title'),
     ranking: document.getElementById('ranking'), again: document.getElementById('again'), closeResult: document.getElementById('close-result'),
   };
 
   // 設定フォームの値（「始める」までは盤に反映しない）
-  let draft = { rule: 'empty', players: 2, pits: 6, stones: 4, seats: ['human', 'normal', 'normal', 'normal'] };
+  let draft = { rule: 'empty', allStores: false, players: 2, pits: 6, stones: 4, seats: ['human', 'normal', 'normal', 'normal'] };
   // 今の対局
   let S = null;        // { cfg, game, view, flash, message, busy }
   let gen = 0;         // やり直し時に古いタイマーを無効にする番号
@@ -409,6 +412,9 @@
     }
     els.scores.innerHTML = rows;
     document.querySelectorAll('.rules ol').forEach((ol) => { ol.hidden = ol.dataset.rule !== (empty ? 'empty' : 'store'); });
+    document.querySelectorAll('.rules .store-rule').forEach((li) => {
+      li.textContent = game.allStores ? '自分のゴールにも、ほかの人のゴールにも入れます（ローカルルール）。' : '自分のゴールには入れます。ほかの人のゴールは飛ばします。';
+    });
     renderResult();
   }
 
@@ -538,6 +544,7 @@
   function renderDraft() {
     els.seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === draft.players)));
     els.rule.value = draft.rule;
+    els.allStores.checked = !!draft.allStores;
     els.pits.value = draft.pits; els.pitsOut.textContent = draft.pits;
     els.stones.value = draft.stones; els.stonesOut.textContent = draft.stones;
     let html = '';
@@ -553,10 +560,11 @@
   els.stones.addEventListener('input', () => { draft.stones = Number(els.stones.value); els.stonesOut.textContent = draft.stones; });
   els.seats.addEventListener('change', (e) => { const p = Number(e.target.dataset.p); draft.seats[p] = e.target.value; });
   els.rule.addEventListener('change', () => { draft.rule = els.rule.value; });
+  els.allStores.addEventListener('change', () => { draft.allStores = els.allStores.checked; });
   els.speed.addEventListener('change', () => { if (S) S.cfg.speed = els.speed.value; });
 
   function cfgFromDraft() {
-    return { rule: draft.rule, players: draft.players, pits: draft.pits, stones: draft.stones, seats: draft.seats.slice(0, draft.players), speed: els.speed.value };
+    return { rule: draft.rule, allStores: draft.allStores, players: draft.players, pits: draft.pits, stones: draft.stones, seats: draft.seats.slice(0, draft.players), speed: els.speed.value };
   }
   els.apply.addEventListener('click', () => newGame(cfgFromDraft()));
   els.restart.addEventListener('click', () => newGame(Object.assign({}, S.cfg, { speed: els.speed.value })));
@@ -566,7 +574,7 @@
   // ページ更新時に対局を引き継ぐ
   window.claude?.hot?.snapshot?.(() => ({ draft, cfg: S.cfg, game: S.busy ? null : S.game }));
   function start(data) {
-    if (data && data.draft) draft = Object.assign({ rule: 'empty' }, data.draft);
+    if (data && data.draft) draft = Object.assign({ rule: 'empty', allStores: false }, data.draft);
     renderDraft();
     if (data && data.cfg && data.game) {
       gen++;

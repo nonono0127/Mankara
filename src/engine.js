@@ -8,6 +8,8 @@
 // 勝敗の付け方（rule）は2種類:
 //   'store' … ゴールの石がいちばん多い人の勝ち（横取りあり）
 //   'empty' … 自分の穴を先に全部空にした人の勝ち（横取りなし）
+// ローカルルール:
+//   allStores … true なら相手のゴールも飛ばさずに石を入れる
 (function (global) {
   'use strict';
 
@@ -16,12 +18,13 @@
     const pits = opts.pits;
     const stones = opts.stones;
     const rule = opts.rule || 'store';
+    const allStores = !!opts.allStores;
     const board = [];
     for (let p = 0; p < players; p++) {
       for (let i = 0; i < pits; i++) board.push(stones);
       board.push(0);
     }
-    return { players, pits, board, current: 0, over: false, rule, winner: -1 };
+    return { players, pits, board, current: 0, over: false, rule, allStores, winner: -1 };
   }
 
   function seg(game) { return game.pits + 1; }
@@ -40,7 +43,7 @@
   }
 
   function clone(game) {
-    return { players: game.players, pits: game.pits, board: game.board.slice(), current: game.current, over: game.over, rule: game.rule || 'store', winner: game.winner };
+    return { players: game.players, pits: game.pits, board: game.board.slice(), current: game.current, over: game.over, rule: game.rule || 'store', allStores: !!game.allStores, winner: game.winner };
   }
 
   // 1手打つ。新しい状態と、アニメーション用の手順（steps）を返す。
@@ -56,8 +59,8 @@
 
     while (hand > 0) {
       idx = (idx + 1) % len;
-      // 相手のゴールには入れない
-      if (isStore(g, idx) && ownerOf(g, idx) !== me) continue;
+      // 相手のゴールには入れない（ローカルルール allStores なら入れる）
+      if (!g.allStores && isStore(g, idx) && ownerOf(g, idx) !== me) continue;
       g.board[idx]++;
       hand--;
       steps.push({ type: 'drop', idx });
