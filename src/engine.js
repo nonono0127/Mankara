@@ -4,6 +4,10 @@
 //   穴: p*(pits+1) + 0 .. pits-1
 //   ゴール: p*(pits+1) + pits
 // で、石は番号が増える向き（反時計回り）に配られる。
+//
+// 勝敗の付け方（rule）は2種類:
+//   'store' … ゴールの石がいちばん多い人の勝ち（横取りあり）
+//   'empty' … 自分の穴を先に全部空にした人の勝ち（横取りなし）
 (function (global) {
   'use strict';
 
@@ -11,12 +15,13 @@
     const players = opts.players;
     const pits = opts.pits;
     const stones = opts.stones;
+    const rule = opts.rule || 'store';
     const board = [];
     for (let p = 0; p < players; p++) {
       for (let i = 0; i < pits; i++) board.push(stones);
       board.push(0);
     }
-    return { players, pits, board, current: 0, over: false };
+    return { players, pits, board, current: 0, over: false, rule, winner: -1 };
   }
 
   function seg(game) { return game.pits + 1; }
@@ -35,7 +40,7 @@
   }
 
   function clone(game) {
-    return { players: game.players, pits: game.pits, board: game.board.slice(), current: game.current, over: game.over };
+    return { players: game.players, pits: game.pits, board: game.board.slice(), current: game.current, over: game.over, rule: game.rule || 'store', winner: game.winner };
   }
 
   // 1手打つ。新しい状態と、アニメーション用の手順（steps）を返す。
@@ -62,7 +67,7 @@
     if (idx === storeIndex(g, me)) {
       // 自分のゴールで止まったらもう1回
       extraTurn = true;
-    } else if (!isStore(g, idx) && ownerOf(g, idx) === me && g.board[idx] === 1) {
+    } else if (g.rule === 'store' && !isStore(g, idx) && ownerOf(g, idx) === me && g.board[idx] === 1) {
       // 自分の空っぽの穴で止まったら、次の人の向かいの穴を横取り
       const i = idx % seg(g);
       const victim = (me + 1) % g.players;
@@ -74,6 +79,21 @@
         g.board[idx] = 0;
         steps.push({ type: 'capture', from: [idx, target], to: storeIndex(g, me), count: taken });
       }
+    }
+
+    // 'empty' ルール: 自分の穴が全部空になったら、その時点で勝ち
+    // （石は配るだけで相手の穴から減ることはないので、空になりうるのは打った本人だけ）
+    if (g.rule === 'empty') {
+      let mine = 0;
+      for (let i = 0; i < g.pits; i++) mine += g.board[pitIndex(g, me, i)];
+      if (mine === 0) {
+        g.over = true;
+        g.winner = me;
+        steps.push({ type: 'end' });
+      } else if (!extraTurn) {
+        g.current = (me + 1) % g.players;
+      }
+      return { game: g, steps, extraTurn };
     }
 
     // 誰かの穴がすべて空になったら終了。残りの石はそれぞれのゴールへ
@@ -106,7 +126,19 @@
     return out;
   }
 
+  // 穴に残っている石の数
+  function remaining(game) {
+    const out = [];
+    for (let p = 0; p < game.players; p++) {
+      let sum = 0;
+      for (let i = 0; i < game.pits; i++) sum += game.board[pitIndex(game, p, i)];
+      out.push(sum);
+    }
+    return out;
+  }
+
   function winners(game) {
+    if (game.rule === 'empty') return game.winner >= 0 ? [game.winner] : [];
     const s = scores(game);
     const best = Math.max.apply(null, s);
     return s.map((v, p) => (v === best ? p : -1)).filter((p) => p >= 0);
@@ -116,6 +148,16 @@
   // 各プレイヤーが「自分の点 − いちばん強い相手の点」を最大にしようとする前提で先読みする（max-n 法）。
 
   function evaluate(game) {
+    if (game.rule === 'empty') {
+      // 残りが少ないほど良い。勝ちが決まっていれば大きな値
+      const rem = remaining(game);
+      return rem.map((v, p) => {
+        if (game.over) return game.winner === p ? 1000 : -1000;
+        let bestOther = Infinity;
+        for (let q = 0; q < rem.length; q++) if (q !== p) bestOther = Math.min(bestOther, rem[q]);
+        return bestOther - v;
+      });
+    }
     const s = scores(game);
     // 終局前は、自分の穴に残っている石も少しだけ価値ありとみなす
     if (!game.over) {
@@ -158,7 +200,7 @@
     return search(game, depth, { n: 200000 }).move;
   }
 
-  const api = { createGame, legalMoves, applyMove, scores, winners, chooseMove, pitIndex, storeIndex, ownerOf, isStore };
+  const api = { createGame, legalMoves, applyMove, scores, remaining, winners, chooseMove, pitIndex, storeIndex, ownerOf, isStore };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.Mancala = api;
 })(typeof window !== 'undefined' ? window : globalThis);

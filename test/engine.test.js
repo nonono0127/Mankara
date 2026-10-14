@@ -72,3 +72,28 @@ test('強いCPUはランダムにほぼ勝つ', () => {
   }
   assert.ok(wins >= 9, `wins=${wins}`);
 });
+
+test('emptyルール: 自分の穴を先に空にした人の勝ち、横取りなし', () => {
+  const g = M.createGame({ players: 2, pits: 3, stones: 1, rule: 'empty' });
+  g.board = [1,0,0, 0, 0,0,5, 0];
+  // 穴0の1個 → 穴1(空)で止まるが横取りはしない
+  let r = M.applyMove(g, 0);
+  assert.deepStrictEqual(r.game.board, [0,1,0, 0, 0,0,5, 0]);
+  assert.strictEqual(r.game.over, false);
+  r.game.current = 0;
+  r = M.applyMove(r.game, 1); // 穴1 → 穴2
+  r.game.current = 0;
+  r = M.applyMove(r.game, 2); // 穴2 → ゴール。穴が全部空 → 勝ち
+  assert.strictEqual(r.game.over, true);
+  assert.deepStrictEqual(M.winners(r.game), [0]);
+});
+
+test('emptyルールでも最後まで遊べる', () => {
+  for (const players of [2, 3]) {
+    let g = M.createGame({ players, pits: 5, stones: 5, rule: 'empty' });
+    let guard = 0;
+    while (!g.over && guard++ < 5000) g = M.applyMove(g, M.chooseMove(g, 'normal')).game;
+    assert.strictEqual(g.over, true);
+    assert.strictEqual(M.winners(g).length, 1);
+  }
+});
