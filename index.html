@@ -38,6 +38,7 @@
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     background: var(--bg); color: var(--ink);
     font-family: var(--font-body); font-size: 15px; line-height: 1.7;
@@ -103,7 +104,31 @@
   .center-text { font-family: var(--font-display); font-size: 22px; text-anchor: middle; dominant-baseline: central; fill: var(--ink); }
   .center-sub { font-size: 14px; text-anchor: middle; fill: var(--muted); }
   .stone { stroke: rgba(0,0,0,0.25); stroke-width: 0.6; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  /* 終局の結果（盤の上に重ねる） */
+  .stage-wrap { position: relative; min-width: 0; }
+  .result {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 16px;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  .result-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+    padding: 22px 26px; width: min(380px, 100%); display: grid; gap: 14px; text-align: center;
+    animation: pop 0.35s cubic-bezier(.2,1.4,.4,1);
+  }
+  .result-kicker { margin: 0; color: var(--muted); font-size: 0.85rem; letter-spacing: 0.1em; }
+  .result-title { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 7vw, 2.8rem); line-height: 1.2; text-wrap: balance; }
+  .result-title.win { color: var(--accent); }
+  .result-title.lose { color: var(--muted); }
+  .ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; text-align: left; }
+  .ranking li { display: grid; grid-template-columns: 3em 12px 1fr auto; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; }
+  .ranking li.first { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 700; }
+  .ranking .place { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ranking .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .ranking b { font-variant-numeric: tabular-nums; font-size: 1.2rem; }
+  .result .actions { justify-content: center; }
+  @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <div class="wrap">
@@ -113,7 +138,20 @@
   </header>
 
   <div class="main">
-    <div class="stage" id="stage" aria-label="盤面"></div>
+    <div class="stage-wrap">
+      <div class="stage" id="stage" aria-label="盤面"></div>
+      <div class="result" id="result" role="dialog" aria-labelledby="result-title" hidden>
+        <div class="result-card">
+          <p class="result-kicker">対局終了</p>
+          <h2 class="result-title" id="result-title"></h2>
+          <ol class="ranking" id="ranking"></ol>
+          <div class="actions">
+            <button class="primary" id="again">もう一度</button>
+            <button id="close-result">盤を見る</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <aside class="side">
       <div class="card">
@@ -188,6 +226,8 @@
     pits: document.getElementById('pits'), pitsOut: document.getElementById('pits-out'),
     stones: document.getElementById('stones'), stonesOut: document.getElementById('stones-out'),
     seats: document.getElementById('seats'), speed: document.getElementById('speed'),
+    result: document.getElementById('result'), resultTitle: document.getElementById('result-title'),
+    ranking: document.getElementById('ranking'), again: document.getElementById('again'), closeResult: document.getElementById('close-result'),
   };
 
   // 設定フォームの値（「始める」までは盤に反映しない）
@@ -351,13 +391,50 @@
       rows += `<li class="${turn ? 'turn' : ''}">${dot(p)}<span>${name(p)}${turn ? ' <small>手番</small>' : ''}</span><b>${view[M.storeIndex(game, p)]}</b></li>`;
     }
     els.scores.innerHTML = rows;
+    renderResult();
+  }
+
+  // 終局したら盤の上に勝ち負けと順位を大きく出す
+  function renderResult() {
+    const { cfg, game } = S;
+    const show = game.over && !S.busy && !S.resultClosed;
+    const wasHidden = els.result.hidden;
+    els.result.hidden = !show;
+    if (!show) return;
+
+    const sc = M.scores(game), w = M.winners(game);
+    const humans = cfg.seats.map((v, p) => (v === 'human' ? p : -1)).filter((p) => p >= 0);
+    let title, tone = '';
+    if (humans.length === 1) {
+      // 人が1人だけなら「あなた」目線で
+      const me = humans[0];
+      if (!w.includes(me)) { title = 'あなたの負け…'; tone = 'lose'; }
+      else if (w.length > 1) title = '引き分け';
+      else { title = 'あなたの勝ち！'; tone = 'win'; }
+    } else if (w.length > 1) {
+      title = w.length === cfg.players ? '引き分け' : w.map((p) => 'P' + (p + 1)).join('・') + ' が同点で1位';
+    } else {
+      title = name(w[0]) + ' の勝ち！'; tone = 'win';
+    }
+    els.resultTitle.textContent = title;
+    els.resultTitle.className = 'result-title ' + tone;
+
+    // 同点は同じ順位
+    const order = sc.map((v, p) => p).sort((a, b) => sc[b] - sc[a] || a - b);
+    els.ranking.innerHTML = order.map((p) => {
+      const place = 1 + sc.filter((v) => v > sc[p]).length;
+      const you = humans.length === 1 && humans[0] === p ? '（あなた）' : '';
+      return `<li class="${place === 1 ? 'first' : ''}"><span class="place">${place}位</span>` +
+        `<span class="dot" style="background:${PCOL[p]}"></span><span>${name(p)}${you}</span><b>${sc[p]}</b></li>`;
+    }).join('');
+    if (wasHidden) els.again.focus();
   }
 
   // ---------- 進行 ----------
   function newGame(cfg) {
     gen++;
     const game = M.createGame(cfg);
-    S = { cfg, game, view: game.board.slice(), flash: -1, message: '', busy: false };
+    S = { cfg, game, view: game.board.slice(), flash: -1, message: '', busy: false, resultClosed: false };
     setTurnMessage();
     render();
     nextTurn();
@@ -451,6 +528,8 @@
   }
   els.apply.addEventListener('click', () => newGame(cfgFromDraft()));
   els.restart.addEventListener('click', () => newGame(Object.assign({}, S.cfg, { speed: els.speed.value })));
+  els.again.addEventListener('click', () => newGame(Object.assign({}, S.cfg, { speed: els.speed.value })));
+  els.closeResult.addEventListener('click', () => { S.resultClosed = true; renderResult(); els.restart.focus(); });
 
   // ページ更新時に対局を引き継ぐ
   window.claude?.hot?.snapshot?.(() => ({ draft, cfg: S.cfg, game: S.busy ? null : S.game }));
