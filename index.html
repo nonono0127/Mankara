@@ -126,6 +126,7 @@
   .ranking .place { color: var(--muted); font-variant-numeric: tabular-nums; }
   .ranking .dot { width: 12px; height: 12px; border-radius: 50%; }
   .ranking b { font-variant-numeric: tabular-nums; font-size: 1.2rem; }
+  .scores b small, .ranking b small { font-size: 0.75rem; font-weight: 400; color: var(--muted); }
   .result .actions { justify-content: center; }
   @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -165,6 +166,13 @@
       <details class="card" id="settings" open>
         <summary>盤と対戦相手の設定</summary>
         <div class="field">
+          <label for="rule">勝敗の付け方</label>
+          <select id="rule">
+            <option value="empty" selected>先に自分の穴を空にした人の勝ち</option>
+            <option value="store">ゴールの石がいちばん多い人の勝ち</option>
+          </select>
+        </div>
+        <div class="field">
           <span class="lbl">人数</span>
           <div class="seg" id="players-seg">
             <button type="button" data-n="2">2人</button>
@@ -199,7 +207,13 @@
 
       <details class="card rules">
         <summary>ルール</summary>
-        <ol>
+        <ol data-rule="empty">
+          <li>自分の穴を1つ選ぶと、中の石を全部つかんで、反時計回りに1個ずつ配ります。</li>
+          <li>自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
+          <li>最後の1個が自分のゴールに入ったら、もう1回打てます。</li>
+          <li>自分の穴を先に全部空にした人の勝ちです。</li>
+        </ol>
+        <ol data-rule="store" hidden>
           <li>自分の穴を1つ選ぶと、中の石を全部つかんで、反時計回りに1個ずつ配ります。</li>
           <li>自分のゴールには入れます。ほかの人のゴールは飛ばします。</li>
           <li>最後の1個が自分のゴールに入ったら、もう1回打てます。</li>
@@ -225,13 +239,13 @@
     restart: document.getElementById('restart'), apply: document.getElementById('apply'), seg: document.getElementById('players-seg'),
     pits: document.getElementById('pits'), pitsOut: document.getElementById('pits-out'),
     stones: document.getElementById('stones'), stonesOut: document.getElementById('stones-out'),
-    seats: document.getElementById('seats'), speed: document.getElementById('speed'),
+    seats: document.getElementById('seats'), speed: document.getElementById('speed'), rule: document.getElementById('rule'),
     result: document.getElementById('result'), resultTitle: document.getElementById('result-title'),
     ranking: document.getElementById('ranking'), again: document.getElementById('again'), closeResult: document.getElementById('close-result'),
   };
 
   // 設定フォームの値（「始める」までは盤に反映しない）
-  let draft = { players: 2, pits: 6, stones: 4, seats: ['human', 'normal', 'normal', 'normal'] };
+  let draft = { rule: 'empty', players: 2, pits: 6, stones: 4, seats: ['human', 'normal', 'normal', 'normal'] };
   // 今の対局
   let S = null;        // { cfg, game, view, flash, message, busy }
   let gen = 0;         // やり直し時に古いタイマーを無効にする番号
@@ -385,13 +399,25 @@
     const { cfg, game, view } = S;
     const dot = (p) => `<span class="dot" style="background:${PCOL[p]}"></span>`;
     els.status.innerHTML = (game.over ? '' : dot(game.current)) + `<span>${S.message}</span>`;
+    const empty = isEmptyRule();
     let rows = '';
     for (let p = 0; p < cfg.players; p++) {
       const turn = !game.over && game.current === p;
-      rows += `<li class="${turn ? 'turn' : ''}">${dot(p)}<span>${name(p)}${turn ? ' <small>手番</small>' : ''}</span><b>${view[M.storeIndex(game, p)]}</b></li>`;
+      // 空にするルールでは「穴に残っている石」、石の数ルールでは「ゴールの石」
+      const v = empty ? left(view, p) : view[M.storeIndex(game, p)];
+      rows += `<li class="${turn ? 'turn' : ''}">${dot(p)}<span>${name(p)}${turn ? ' <small>手番</small>' : ''}</span><b>${empty ? '<small>残り</small> ' : ''}${v}</b></li>`;
     }
     els.scores.innerHTML = rows;
+    document.querySelectorAll('.rules ol').forEach((ol) => { ol.hidden = ol.dataset.rule !== (empty ? 'empty' : 'store'); });
     renderResult();
+  }
+
+  function isEmptyRule() { return S.game.rule === 'empty'; }
+  // 穴に残っている石の数
+  function left(board, p) {
+    let sum = 0;
+    for (let i = 0; i < S.cfg.pits; i++) sum += board[M.pitIndex(S.game, p, i)];
+    return sum;
   }
 
   // 終局したら盤の上に勝ち負けと順位を大きく出す
@@ -419,13 +445,16 @@
     els.resultTitle.textContent = title;
     els.resultTitle.className = 'result-title ' + tone;
 
-    // 同点は同じ順位
-    const order = sc.map((v, p) => p).sort((a, b) => sc[b] - sc[a] || a - b);
+    // 順位の基準: 空にするルールは「勝った人 → 残りが少ない順」、石の数ルールは「ゴールの石が多い順」。同点は同じ順位
+    const empty = isEmptyRule();
+    const key = sc.map((v, p) => (empty ? (w.includes(p) ? -1 : left(game.board, p)) : -v));
+    const order = key.map((v, p) => p).sort((a, b) => key[a] - key[b] || a - b);
     els.ranking.innerHTML = order.map((p) => {
-      const place = 1 + sc.filter((v) => v > sc[p]).length;
+      const place = 1 + key.filter((v) => v < key[p]).length;
       const you = humans.length === 1 && humans[0] === p ? '（あなた）' : '';
+      const val = empty ? `<small>残り</small> ${left(game.board, p)}` : sc[p];
       return `<li class="${place === 1 ? 'first' : ''}"><span class="place">${place}位</span>` +
-        `<span class="dot" style="background:${PCOL[p]}"></span><span>${name(p)}${you}</span><b>${sc[p]}</b></li>`;
+        `<span class="dot" style="background:${PCOL[p]}"></span><span>${name(p)}${you}</span><b>${val}</b></li>`;
     }).join('');
     if (wasHidden) els.again.focus();
   }
@@ -444,6 +473,7 @@
     const { game, cfg } = S;
     if (game.over) {
       const w = M.winners(game), sc = M.scores(game);
+      if (isEmptyRule()) { S.message = `${name(w[0])} の勝ち！（先に穴を全部空にしました）`; return; }
       const scoreText = sc.join(' 対 ');
       S.message = w.length > 1 ? `引き分け（${scoreText}）` : `${name(w[0])} の勝ち！（${scoreText}）`;
       return;
@@ -507,6 +537,7 @@
   // ---------- 設定フォーム ----------
   function renderDraft() {
     els.seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === draft.players)));
+    els.rule.value = draft.rule;
     els.pits.value = draft.pits; els.pitsOut.textContent = draft.pits;
     els.stones.value = draft.stones; els.stonesOut.textContent = draft.stones;
     let html = '';
@@ -521,10 +552,11 @@
   els.pits.addEventListener('input', () => { draft.pits = Number(els.pits.value); els.pitsOut.textContent = draft.pits; });
   els.stones.addEventListener('input', () => { draft.stones = Number(els.stones.value); els.stonesOut.textContent = draft.stones; });
   els.seats.addEventListener('change', (e) => { const p = Number(e.target.dataset.p); draft.seats[p] = e.target.value; });
+  els.rule.addEventListener('change', () => { draft.rule = els.rule.value; });
   els.speed.addEventListener('change', () => { if (S) S.cfg.speed = els.speed.value; });
 
   function cfgFromDraft() {
-    return { players: draft.players, pits: draft.pits, stones: draft.stones, seats: draft.seats.slice(0, draft.players), speed: els.speed.value };
+    return { rule: draft.rule, players: draft.players, pits: draft.pits, stones: draft.stones, seats: draft.seats.slice(0, draft.players), speed: els.speed.value };
   }
   els.apply.addEventListener('click', () => newGame(cfgFromDraft()));
   els.restart.addEventListener('click', () => newGame(Object.assign({}, S.cfg, { speed: els.speed.value })));
@@ -534,7 +566,7 @@
   // ページ更新時に対局を引き継ぐ
   window.claude?.hot?.snapshot?.(() => ({ draft, cfg: S.cfg, game: S.busy ? null : S.game }));
   function start(data) {
-    if (data && data.draft) draft = data.draft;
+    if (data && data.draft) draft = Object.assign({ rule: 'empty' }, data.draft);
     renderDraft();
     if (data && data.cfg && data.game) {
       gen++;
