@@ -190,11 +190,40 @@
 
   const LEVELS = { easy: 1, normal: 3, hard: 6 };
 
+  // 'empty' ルール用: 各手について「そのあと最後まで試しに打つ」を何回も繰り返し、勝てた回数が多い手を選ぶ（モンテカルロ法）。
+  // 先読みの点数（残りの石の数）は目先の数に引っぱられて弱かったので、こちらを使う。
+  // 試しの対局は、全員が「だいたい左端の穴から」打つ（シミュレーションで強かった打ち方）。
+  const PLAYOUTS = { easy: 8, normal: 40, hard: 150 };
+
+  function playoutWins(game, me, rng) {
+    let g = game;
+    while (!g.over) {
+      const ms = legalMoves(g);
+      const m = rng() < 0.75 ? ms[0] : ms[Math.floor(rng() * ms.length)];
+      g = applyMove(g, m).game;
+    }
+    return g.winner === me ? 1 : 0;
+  }
+
+  function monteCarloMove(game, n, rng) {
+    const me = game.current;
+    let best = -1, bestWins = -1;
+    for (const m of legalMoves(game)) {
+      const after = applyMove(game, m).game;
+      if (after.over) return m; // 打てば空になって勝ち
+      let wins = 0;
+      for (let k = 0; k < n; k++) wins += playoutWins(after, me, rng);
+      if (wins > bestWins || (wins === bestWins && rng() < 0.5)) { best = m; bestWins = wins; }
+    }
+    return best;
+  }
+
   function chooseMove(game, level, rng) {
     rng = rng || Math.random;
     const moves = legalMoves(game);
     if (moves.length === 0) return -1;
     if (level === 'easy' && rng() < 0.5) return moves[Math.floor(rng() * moves.length)];
+    if (game.rule === 'empty') return moves.length === 1 ? moves[0] : monteCarloMove(game, PLAYOUTS[level] || 40, rng);
     let depth = LEVELS[level] || 3;
     if (game.players > 2) depth = Math.min(depth, 4);
     return search(game, depth, { n: 200000 }).move;
